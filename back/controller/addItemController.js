@@ -1,107 +1,128 @@
-import db from "../db/db.js"
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
+import { supabase } from "../supabase/supabase.js";
 
+const itemController = {
+  // ➕ Tambah item & update saldo
+  addItem: async (req, res) => {
+    const { item, price, date } = req.body;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+    try {
+      // 1. Ambil saldo sekarang
+      const { data: saldoData, error: saldoError } = await supabase
+        .from("saldo")
+        .select("saldo")
+        .eq("id", 1)
+        .single();
 
-const itemsPath = path.join(__dirname, '../data/items.json');
-const saldoPath = path.join(__dirname, '../data/saldo.json');
+      if (saldoError) throw saldoError;
+      let currentSaldo = saldoData?.saldo || 0;
 
-const dbItems = {
-    items: [],
+      // 2. Cek saldo cukup atau tidak
+      if (Number(price) > currentSaldo) {
+        return res.status(400).json({ error: "Insufficient saldo" });
+      }
 
-    addItem: (req, res) => {
-        const { item, price, date } = req.body;
-        fs.readFile(saldoPath, 'utf-8', (err, data) => {
-            if (err) {
-                console.error("Error reading saldo file:", err);
-                return res.status(500).json({ error: "Internal server error" });
-            }
-            let currentSaldo = JSON.parse(data).saldo || 0;
-            if (Number(price) > currentSaldo) {
-                return res.status(400).json({ error: "Insufficient saldo" });
-            }
-            const newSaldo = currentSaldo - Number(price);
-            fs.writeFile(saldoPath, JSON.stringify({ saldo: newSaldo }), (err) => {
-                if (err) {
-                    console.error("Error writing saldo file:", err);
-                    return res.status(500).json({ error: "Internal server error" });
-                }
-                // Tambah item ke daftar dengan id unik
-                const itemList = fs.readFileSync(itemsPath, 'utf-8');
-                dbItems.items = JSON.parse(itemList);
-                const newItem = {
-                    id: Date.now().toString(), // id unik
-                    item,
-                    price,
-                    date
-                };
-                dbItems.items.push(newItem);
-                dbItems.saveToFile((err) => {
-                    if (err) {
-                        console.error("Error saving item:", err);
-                        return res.status(500).json({ error: "Error saving item" });
-                    }
-                    res.json({ message: "Item added and saldo deducted", saldo: newSaldo, newItem });
-                });
-            });
-        });
-    },
+      const newSaldo = currentSaldo - Number(price);
 
-    getItems: () => {
-        try {
-            // Cek dulu apakah file ada
-            if (!fs.existsSync(itemsPath)) {
-                fs.writeFileSync(itemsPath, JSON.stringify([]));
-                return [];
-            }
-            // Baca file setelah dipastikan ada
-            const itemList = fs.readFileSync(itemsPath, 'utf-8');
-            // Jika file kosong, kembalikan array kosong
-            if (!itemList.trim()) return [];
-            dbItems.items = JSON.parse(itemList);
-            return dbItems.items;
-        } catch (error) {
-            console.error("Error reading items:", error);
-            return [];
-        }
-    },
+      // 3. Update saldo
+      const { error: updateError } = await supabase
+        .from("saldo")
+        .update({ saldo: newSaldo })
+        .eq("id", 1);
 
-    saveToFile: (callback) => {
-        fs.writeFile(itemsPath, JSON.stringify(dbItems.items), (err) => {
-            if (err) {
-                console.error("Error saving to file:", err);
-                callback(err);
-            } else {
-                callback(null);
-            }
-        });
-    },
+      if (updateError) throw updateError;
 
-    deleteItem: (id, res) => {
-        // Baca file dulu agar data selalu update
-        let itemList = "[]";
-        if (fs.existsSync(itemsPath)) {
-            itemList = fs.readFileSync(itemsPath, 'utf-8').trim() || "[]";
-        }
-        try {
-            dbItems.items = JSON.parse(itemList);
-        } catch (e) {
-            dbItems.items = [];
-        }
-        dbItems.items = dbItems.items.filter(i => i.id !== id);
-        dbItems.saveToFile((err) => {
-            if (err) {
-                console.error("Error deleting item:", err);
-                return res.status(500).json({ error: "Error deleting item" });
-            }
-            res.json({ message: "Item deleted" });
-        });
+      // 4. Tambah item baru ke table transactions (tanpa field saldo)
+      const newItem = { item, price, date };
+      const { data: insertedItem, error: insertError } = await supabase
+        .from("transactions")
+        .insert([newItem])
+        .select()
+        .single();
+
+      if (insertError) throw insertError;
+
+      res.json({
+        message: "Item added and saldo deducted",
+        saldo: newSaldo,
+        newItem: insertedItem,
+      });
+    } catch (err) {
+      console.error("Error addItem:", err);
+      res.status(500).json({ error: err.message });
     }
+  },
 
+  // 📖 Ambil semua item
+  getItems: async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("*")
+        .order("date", { ascending: false });
+
+      if (error) throw error;
+      res.json(data);
+    } catch (err) {
+      console.error("Error getItems:", err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  // ❌ Hapus item berdasarkan id
+  deleteItem: async (req, res) => {
+    const { id } = req.params;
+
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("id", id);
+
+      if (error) throw error;
+
+      res.json({ message: "Item deleted" });
+    } catch (err) {
+      console.error("Error deleteItem:", err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  // 💰 Ambil saldo saat ini
+  getSaldo: async (req, res) => {
+    try {
+      const { data, error } = await supabase
+        .from("saldo")
+        .select("saldo")
+        .eq("id", 1)
+        .single();
+
+      if (error) throw error;
+      res.json({ saldo: data?.saldo ?? 0 });
+    } catch (err) {
+      console.error("Error getSaldo:", err);
+      res.status(500).json({ error: err.message });
+    }
+  },
+
+  // 🔄 Reset saldo manual
+  updateSaldo: async (req, res) => {
+    const { saldo } = req.body;
+
+    try {
+      const { data, error } = await supabase
+        .from("saldo")
+        .update({ saldo })
+        .eq("id", 1)
+        .select()
+        .single();
+
+      if (error) throw error;
+      res.json({ saldo: data?.saldo ?? saldo });
+    } catch (err) {
+      console.error("Error updateSaldo:", err);
+      res.status(500).json({ error: err.message });
+    }
+  },
 };
 
-export default dbItems;
+export default itemController;

@@ -1,48 +1,56 @@
-import path from "path";
-import { fileURLToPath } from "url";
-import fs from "fs";
+import { supabase } from "../supabase/supabase.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-const saveToFile = (req, res) => {
-    const { items, filename } = req.body;
-    if (typeof filename !== "string" || !filename) {
-        return res.status(400).json({ error: "Filename must be a valid string" });
-    }
-    if (!items) {
+// Simpan semua item ke tabel 'files' di Supabase
+const saveToSupabase = async (req, res) => {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
         return res.status(400).json({ error: "No items to save" });
     }
     try {
-        const json = JSON.stringify(items, null, 2);
-        fs.writeFileSync(path.join(__dirname, '../file', filename), json);
-        res.json({ message: "File saved successfully" });
+        const { error } = await supabase
+            .from("files")
+            .insert(items);
+
+        if (error) throw error;
+        res.json({ message: "Items saved to Supabase", count: items.length });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-const showFile = (req, res) => {
+// Tampilkan semua item dari tabel 'files'
+const showFiles= async (req, res) => {
     try {
-        const files = fs.readdirSync(path.join(__dirname, '../file'));
-        res.json(files);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
+        const { data, error } = await supabase
+            .from("files")
+            .select("filename")
+            .neq("filename", null);
+        if (error) throw error;
+        // Ambil nama file unik
+        const uniqueFiles = [...new Set(data.map(item => item.filename))];
+        res.json(uniqueFiles);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
     }
 };
 
-const deleteFile = (req, res) => {
-   try {
-       const { filename } = req.params;
-       fs.unlinkSync(path.join(__dirname, '../file', filename));
-       res.json({ message: "File deleted successfully" });
-   } catch (error) {
-       res.status(500).json({ error: error.message });
-   }
+// Hapus item dari tabel 'files' berdasarkan id
+const deleteFile = async (req, res) => {
+    const { filename } = req.params;
+    try {
+        const { error } = await supabase
+            .from("files")
+            .delete()
+            .eq("filename", filename);
+        if (error) throw error;
+        res.json({ message: "File deleted from Supabase" });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 };
 
 export default { 
-    saveToFile,
-    showFile,
+    saveToSupabase,
+    showFiles,
     deleteFile
 };

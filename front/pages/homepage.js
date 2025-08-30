@@ -138,8 +138,8 @@ export function HomePage(navigate) {
             return;
         }
         try {
-            await fetch('/api/add-saldo', {
-                method: 'POST',
+            await fetch('/api/saldo', { // <-- ubah endpoint dan method
+                method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json'
                 },
@@ -159,9 +159,9 @@ export function HomePage(navigate) {
         rechargeButton.style.display = 'block';
     });
 
-    //get saldo
+    // Get saldo
     async function getSaldo() {
-        const response = await fetch('/api/get-saldo');
+        const response = await fetch('/api/saldo'); // <-- ubah endpoint
         const data = await response.json();
         const saldoAmount = page.querySelector('.saldo-amount');
         saldoAmount.textContent = data.saldo || 0;
@@ -200,22 +200,28 @@ export function HomePage(navigate) {
             return;
         }
         const itemsRes = await fetch('/api/get-items');
-        const items = await itemsRes.json();
+        let items = await itemsRes.json();
+
+        // Hapus field id dan tambahkan filename ke setiap item
+        items = items.map(({ id, ...rest }) => ({
+            ...rest,
+            filename
+        }));
+
         const res = await fetch('/api/save-to-file', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items, filename })
+            body: JSON.stringify({ items })
         });
-        showFileButton.style.display = 'block';
-        showItemsButton.style.display = 'block';
+
         const result = await res.json();
         if (res.ok) {
-            alert(result.message || 'File saved!');
+            alert(result.message || 'Items saved to Supabase!');
             saveForm.hidden = true;
             saveButton.style.display = 'block';
             saveForm.querySelector('input[type="text"]').value = '';
         } else {
-            alert(result.error || 'Failed to save file!');
+            alert(result.error || 'Failed to save items!');
         }
     });
 
@@ -224,8 +230,9 @@ export function HomePage(navigate) {
         totalSpan.style.display = 'none';
         const res = await fetch(`/api/show-file`);
         const result = await res.json();
+        // result harus berupa array nama file unik dari Supabase
         fileList.innerHTML = result.map(file => `
-            <li>${file}<button class="delete-file" data-filename="${file}">Delete</button></li>`).join('');
+        <li>${file}<button class="delete-file" data-filename="${file}">Delete</button></li>`).join('');
         itemList.innerHTML = '';
 
         //delete file
@@ -247,7 +254,6 @@ export function HomePage(navigate) {
                 }
             });
         });
-
     });
 
     //show items

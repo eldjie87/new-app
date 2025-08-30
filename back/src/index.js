@@ -4,6 +4,9 @@ import cors from 'cors';
 import express from 'express';
 import loginRouter from '../router/loginRouter.js';
 import authCheckRouter from '../router/authCheckRouter.js';
+//supabase
+// import { createClient } from '@supabase/supabase-js';
+import {supabase} from '../supabase/supabase.js';
 //add itemRouter
 import itemRouter from '../router/itemRouter.js';
 //saldo
@@ -23,8 +26,8 @@ app.use(cors());
 app.use(express.json());
 
 
-app.use("/api", loginRouter);
-app.use("/api", authCheckRouter);
+// app.use("/api", loginRouter);
+// app.use("/api", authCheckRouter);
 app.use("/api", itemRouter);
 app.use("/api", saldoRouter);
 app.use("/api", saveToFile);

@@ -3,7 +3,7 @@ import express from "express";
 
 const router = express.Router();
 
-router.get("/get-saldo", saldoController.getSaldo);
-router.post("/add-saldo", saldoController.updateSaldo);
+router.get("/saldo", saldoController.getSaldo);
+router.post("/saldo", saldoController.updateSaldo);
 
 export default router;
